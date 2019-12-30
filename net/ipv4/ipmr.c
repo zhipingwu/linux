@@ -2099,6 +2099,7 @@ int ip_mr_input(struct sk_buff *skb)
 {
 	struct mfc_cache *cache;
 	struct net *net = dev_net(skb->dev);
+	/*这里去判断是否是本地地址*/
 	int local = skb_rtable(skb)->rt_flags & RTCF_LOCAL;
 	struct mr_table *mrt;
 	struct net_device *dev;
@@ -2165,6 +2166,7 @@ int ip_mr_input(struct sk_buff *skb)
 
 		if (local) {
 			struct sk_buff *skb2 = skb_clone(skb, GFP_ATOMIC);
+			/*如果是本地地址，会投送到本地ip*/
 			ip_local_deliver(skb);
 			if (!skb2)
 				return -ENOBUFS;
