@@ -1948,12 +1948,7 @@ static int ipmr_find_vif(struct mr_table *mrt, struct net_device *dev)
 	return ct;
 }
 
-/** "local" means that we should preserve one skb (for local delivery) 
- * 这里的skb是socket buffer的简称
- * mfc_cache 这里表示为*c的指针： multicast routing entries
- * local : 是否是本地地址
- * mrt : a multicast routing table 广播路由表的意思
-*/
+/* "local" means that we should preserve one skb (for local delivery) */
 static void ip_mr_forward(struct net *net, struct mr_table *mrt,
 			  struct net_device *dev, struct sk_buff *skb,
 			  struct mfc_cache *c, int local)

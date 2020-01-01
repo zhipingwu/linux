@@ -5540,6 +5540,8 @@ discard:
  *	The first three cases are guaranteed by proper pred_flags setting,
  *	the rest is checked inline. Fast processing is turned on in
  *	tcp_data_queue when everything is OK.
+ *	当connect的状态为ESTABLISHED之后，此方法用来处理接受数据
+ *
  */
 void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 {
@@ -5548,6 +5550,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 	unsigned int len = skb->len;
 
 	/* TCP congestion window tracking */
+	/*防止发送端速率过快，接收端速率过慢*/
 	trace_tcp_probe(sk, skb);
 
 	tcp_mstamp_refresh(tp);
@@ -6124,6 +6127,7 @@ static void tcp_rcv_synrecv_state_fastopen(struct sock *sk)
  *	all states except ESTABLISHED and TIME_WAIT.
  *	It's called from both tcp_v4_rcv and tcp_v6_rcv and should be
  *	address independent.
+ *  ipv4 第一次握手过程： tcp_v4_rcv() -> tcp_v4_do_rcv() -> tcp_rcv_state_process() -> tcp_v4_conn_request()
  */
 
 int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
@@ -6140,19 +6144,23 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 		goto discard;
 
 	case TCP_LISTEN:
+		//如果ack有值，返回1
 		if (th->ack)
 			return 1;
-
+		//如果reset有值，那么goto到discard：tcp_drop，直接丢包
 		if (th->rst)
 			goto discard;
 
+		//如果syn优质
 		if (th->syn) {
 			if (th->fin)
 				goto discard;
 			/* It is possible that we process SYN packets from backlog,
 			 * so we need to make sure to disable BH and RCU right there.
+			 * TODO rcu是一种锁，对读写锁的优化，有空细看
 			 */
 			rcu_read_lock();
+			//对某个计数器加1，然后barrier
 			local_bh_disable();
 			acceptable = icsk->icsk_af_ops->conn_request(sk, skb) >= 0;
 			local_bh_enable();
