@@ -3337,6 +3337,7 @@ static void tcp_cong_control(struct sock *sk, u32 ack, u32 acked_sacked,
 
 /* Check that window update is acceptable.
  * The function assumes that snd_una<=ack<=snd_next.
+ * 检查发送窗口是否可以更新
  */
 static inline bool tcp_may_update_window(const struct tcp_sock *tp,
 					const u32 ack, const u32 ack_seq,
@@ -3371,6 +3372,8 @@ static void tcp_rcv_nxt_update(struct tcp_sock *tp, u32 seq)
  *
  * Window update algorithm, described in RFC793/RFC1122 (used in linux-2.2
  * and in FreeBSD. NetBSD's one is even worse.) is wrong.
+ * 
+ * 很重要：此方法就是用来更新发送窗口的，这个也是RFC的规范。
  */
 static int tcp_ack_update_window(struct sock *sk, const struct sk_buff *skb, u32 ack,
 				 u32 ack_seq)
@@ -3405,6 +3408,7 @@ static int tcp_ack_update_window(struct sock *sk, const struct sk_buff *skb, u32
 		}
 	}
 
+	//更新期望的ack里面的第一个字节
 	tcp_snd_una_update(tp, ack);
 
 	return flag;
@@ -3433,6 +3437,8 @@ static bool __tcp_oow_rate_limited(struct net *net, int mib_idx,
  * attacks that send repeated SYNs or ACKs for the same connection. To
  * do this, we do not send a duplicate SYNACK or ACK if the remote
  * endpoint is sending out-of-window SYNs or pure ACKs at a high rate.
+ * 如注释所示，这个方法是用来限制窗口外的ack速率，减轻了同一个connection重复发送sync或者ack带来的影响，
+ * 比如：DoS攻击导致的
  */
 bool tcp_oow_rate_limited(struct net *net, const struct sk_buff *skb,
 			  int mib_idx, u32 *last_oow_ack_time)
@@ -5541,6 +5547,7 @@ discard:
  *	the rest is checked inline. Fast processing is turned on in
  *	tcp_data_queue when everything is OK.
  *	当connect的状态为ESTABLISHED之后，此方法用来处理接受数据
+ *  关于快速路径和慢速路径的处理，有空细看吧，目前先过： https://blog.csdn.net/xiaoyu_750516366/article/details/85558518
  *
  */
 void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
@@ -5550,9 +5557,14 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 	unsigned int len = skb->len;
 
 	/* TCP congestion window tracking */
-	/*防止发送端速率过快，接收端速率过慢*/
+	/*防止发送端速率过快，接收端速率过慢： https://www.cnblogs.com/lshs/p/6038757.html*/
 	trace_tcp_probe(sk, skb);
 
+	/*
+	* 这里的入参为tcp sock,更新tcp 时间戳，主要被计算选择快速和慢速通道方法使用
+	* 慢速通道有几种情况，上面的注释也说明了：零窗口探测、乱序的报文分段到达、紧急数据到达、缓存区满了、不正确的tcp参数等情况
+	* 总之, 快速路径主要用来处理理想情况的，预期的正常输入段。
+	*/
 	tcp_mstamp_refresh(tp);
 	if (unlikely(!sk->sk_rx_dst))
 		inet_csk(sk)->icsk_af_ops->sk_rx_dst_set(sk, skb);
@@ -6127,7 +6139,8 @@ static void tcp_rcv_synrecv_state_fastopen(struct sock *sk)
  *	all states except ESTABLISHED and TIME_WAIT.
  *	It's called from both tcp_v4_rcv and tcp_v6_rcv and should be
  *	address independent.
- *  ipv4 第一次握手过程： tcp_v4_rcv() -> tcp_v4_do_rcv() -> tcp_rcv_state_process() -> tcp_v4_conn_request()
+ *  ipv4 第一次握手过程，也就是第一次收到了sync包： tcp_v4_rcv() -> tcp_v4_do_rcv() -> tcp_rcv_state_process() -> tcp_v4_conn_request()
+ * 
  */
 
 int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
@@ -6268,7 +6281,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 
 		if (tp->snd_una != tp->write_seq)
 			break;
-
+		//第二次挥手？
 		tcp_set_state(sk, TCP_FIN_WAIT2);
 		sk->sk_shutdown |= SEND_SHUTDOWN;
 
@@ -6315,6 +6328,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 
 	case TCP_CLOSING:
 		if (tp->snd_una == tp->write_seq) {
+			//第三次挥手，从WAIT2变为TCP_TIME_WAIT
 			tcp_time_wait(sk, TCP_TIME_WAIT, 0);
 			goto discard;
 		}

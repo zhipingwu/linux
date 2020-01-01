@@ -1542,6 +1542,7 @@ u16 tcp_v4_get_syncookie(struct sock *sk, struct iphdr *iph,
  * doing backlog processing we use the BH locking scheme.
  * This is because we cannot sleep with the original spinlock
  * held.
+ * tcp处理接收请求入口，三次握手，有两次要走这边
  */
 int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 {
@@ -1566,6 +1567,7 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 	if (tcp_checksum_complete(skb))
 		goto csum_err;
 
+	//第三次握手的时候，发送端会走到这里
 	if (sk->sk_state == TCP_LISTEN) {
 		struct sock *nsk = tcp_v4_cookie_check(sk, skb);
 

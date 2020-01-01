@@ -3166,6 +3166,7 @@ void tcp_send_fin(struct sock *sk)
 		/* FIN eats a sequence byte, write_seq advanced by tcp_queue_skb(). */
 		tcp_init_nondata_skb(skb, tp->write_seq,
 				     TCPHDR_ACK | TCPHDR_FIN);
+		//把fin包封装后的skb放到队列末尾，排队
 		tcp_queue_skb(sk, skb);
 	}
 	__tcp_push_pending_frames(sk, tcp_current_mss(sk), TCP_NAGLE_OFF);
@@ -3209,6 +3210,9 @@ void tcp_send_active_reset(struct sock *sk, gfp_t priority)
  * a SYN packet that crossed the incoming SYN that caused this routine
  * to get called. If this assumption fails then the initial rcv_wnd
  * and rcv_wscale values will not be correct.
+ * ipv4 第二次握手： 发送syn还有ack包
+ * 主要的代码流程： tcp_send_synack() -> tcp_ecn_send_synack() + tcp_transmit_skb()
+ * 三次握手，有一次要走这边
  */
 int tcp_send_synack(struct sock *sk)
 {

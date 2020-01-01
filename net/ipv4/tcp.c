@@ -2336,6 +2336,7 @@ bool tcp_check_oom(struct sock *sk, int shift)
 	return too_many_orphans || out_of_socket_memory;
 }
 
+//从这里开始，会开始4次回收的过程
 void tcp_close(struct sock *sk, long timeout)
 {
 	struct sk_buff *skb;
@@ -2421,6 +2422,7 @@ void tcp_close(struct sock *sk, long timeout)
 		 * probably need API support or TCP_CORK SYN-ACK until
 		 * data is written and socket is closed.)
 		 */
+		//发送FIN，这个应该是第一次挥手？
 		tcp_send_fin(sk);
 	}
 
@@ -2454,6 +2456,8 @@ adjudge_to_death:
 	 *	f.e. on http servers, when such sockets are useless, but
 	 *	consume significant resources. Let's do it with special
 	 *	linger2	option.					--ANK
+	 *  简而言之，如果自己端已经关闭，在等待对方发送关闭fin_ack的时候一直不来，我们要设置一个定时器
+	 *  如果超时还有没有收到，我们要强行关了，否则对于一些服务器，资源会耗尽的。
 	 */
 
 	if (sk->sk_state == TCP_FIN_WAIT2) {
