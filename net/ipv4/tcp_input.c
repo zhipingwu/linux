@@ -4112,6 +4112,7 @@ void tcp_reset(struct sock *sk)
 	trace_tcp_receive_reset(sk);
 
 	/* We want the right error as BSD sees it (and indeed as we do). */
+	//在tcp关闭的时候，会判断当前的状态是什么，根据当前的状态来返回不同的sk_err给应用程序
 	switch (sk->sk_state) {
 	case TCP_SYN_SENT:
 		sk->sk_err = ECONNREFUSED;
@@ -6155,7 +6156,8 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 	switch (sk->sk_state) {
 	case TCP_CLOSE:
 		goto discard;
-
+	
+	//服务器端独有的状态，此时socket接口会监听来自客户端的连接请求，可以理解为第一次握手时服务端的状态
 	case TCP_LISTEN:
 		//如果ack有值，返回1
 		if (th->ack)
@@ -6164,7 +6166,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 		if (th->rst)
 			goto discard;
 
-		//如果syn优质
+		//如果syn有值，意味着第一次握手时，服务端收到了客户端的syn=1的请求信息
 		if (th->syn) {
 			if (th->fin)
 				goto discard;
@@ -6175,6 +6177,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 			rcu_read_lock();
 			//对某个计数器加1，然后barrier
 			local_bh_disable();
+			//这里服务端要创建连接了，当然这样要做很多事情：分配内核skb空间、发送synack等，具体的在tcp_ipv4.c 里面的tcp_v4_conn_request
 			acceptable = icsk->icsk_af_ops->conn_request(sk, skb) >= 0;
 			local_bh_enable();
 			rcu_read_unlock();
@@ -6186,6 +6189,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 		}
 		goto discard;
 
+	//客户端在第二次握手收到服务端的syn和ack时的状态
 	case TCP_SYN_SENT:
 		tp->rx_opt.saw_tstamp = 0;
 		tcp_mstamp_refresh(tp);
@@ -6232,6 +6236,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 		goto discard;
 	}
 	switch (sk->sk_state) {
+	//第三次握手时，服务端收到客户端ack时，当前服务端的状态为TCP_SYN_RECV, 这时如果没有任何异常情况，服务端就可以把自己标记为连接建立成功了：TCP_ESTABLISHED
 	case TCP_SYN_RECV:
 		tp->delivered++; /* SYN-ACK delivery isn't tracked in tcp_ack */
 		if (!tp->srtt_us)
@@ -6273,6 +6278,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 		tcp_fast_path_on(tp);
 		break;
 
+	//四次挥手第二次：由于客户端第一次已经发送了一个FIN和ACK的请求到服务端，并且把自己的状态变为TCP_FIN_WAIT1
 	case TCP_FIN_WAIT1: {
 		int tmo;
 
@@ -6326,9 +6332,10 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 		break;
 	}
 
+    //第三次挥手，从WAIT2变为TCP_TIME_WAIT
 	case TCP_CLOSING:
 		if (tp->snd_una == tp->write_seq) {
-			//第三次挥手，从WAIT2变为TCP_TIME_WAIT
+
 			tcp_time_wait(sk, TCP_TIME_WAIT, 0);
 			goto discard;
 		}
@@ -6348,6 +6355,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 
 	/* step 7: process the segment text */
 	switch (sk->sk_state) {
+	//服务端在四次挥手做的事情很少，只有在收到LAST_ACK状态时收到了ack的请求之后做了close动作
 	case TCP_CLOSE_WAIT:
 	case TCP_CLOSING:
 	case TCP_LAST_ACK:
@@ -6355,6 +6363,8 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 			break;
 		/* fall through */
 	case TCP_FIN_WAIT1:
+
+	//客户端要从TCP_FIN_WAIT2变为TCP_CLOSED了
 	case TCP_FIN_WAIT2:
 		/* RFC 793 says to queue data in these states,
 		 * RFC 1122 says we MUST send a reset.
